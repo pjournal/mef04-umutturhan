@@ -1,0 +1,122 @@
+---
+title: "Turkish Energy Market Prices for September 2020"
+author: "Umut Turhan"
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      smooth_scroll: true
+    toc_depth: 3
+date: "`r format(Sys.time(), '%d.%m.%Y')`"
+---
+
+## Introduction
+
+
+### Data
+
+
+  The data is retrieved from the website of EPIAS, Market & Financial Settlement Center. Turkish Energy Market Prices for September 2020 are extracted. 
+
+### Data Preparation
+
+
+  The report is prepared via R programming and the following libraries are used:
+
+```{r setup, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(lubridate)
+library(dplyr)
+library(readxl)
+```
+
+  MCP, SMP, Negative Imbalance Prices and Positive Imbalance Prices are converted to numerical instead of character. Day and Hour Columns were mutated from Date Column and they were converted to factor for our analysis.
+  
+```{r}
+df <- read_xls("/Users/Toshiba/Desktop/Big Data Analytics/MEF/Data Analytics Essentials/ptf-smf.xls")
+
+df_v2 <- df %>%
+  select(Date, MCP, SMP, Pos_Imb_Price = "Positive Imbalance Price (TL/MWh)", 
+         Neg_Imb_Price = "Negative Imbalance Price (TL/MWh)", 
+         SMP_Dir = "SMP Direction") %>%
+  mutate(day = day(dmy_hm(Date)), hour = hour(dmy_hm(Date)), 
+         MCP = as.numeric( MCP), SMP = as.numeric(SMP), 
+         Neg_Imb_Price = as.numeric(Neg_Imb_Price), 
+         Pos_Imb_Price = as.numeric(Pos_Imb_Price), 
+         day = factor(day), hour = factor(hour))
+```
+
+
+## Analysis
+
+
+### Distribution of Hourly Market Clearing Price
+
+  The first analysis is conducted in order to navigate variation of MCP during the day. Box plot shows the distribution of MCP per each hour whereas red dots point out the average MCP per hour.
+
+
+```{r MCP analysis}
+
+ggplot(df_v2, aes(x = hour, y = MCP)) + 
+  geom_boxplot() + 
+  labs(x = "Hour",
+       y = "Market Clearing Price",
+       title = "Distribution of Hourly MCP in September 2020") +
+  stat_summary(fun.y =mean, geom = "point", color="red")
+```
+
+
+  By looking at the box plots, it can be inferred that hourly Market Clearing Prices can be categorized under 4 groups.
+
+
+1- The data shows that there are comparatively short box plots between 21:00 and 01:59 with a few outliers, which indicates that MCP is pretty much stable. This is the group with the lowest risk.
+
+2- From 02:00 to 07:59, box plots get a bit longer with no outliers. It means that variation for MCPs are increasing, mostly in the downward direction since there are more cases with lower MCPs within that period. The average MCP is the lowest.
+
+3- Between 08:00 and 12:59, there are again comparatively short box plots however, this time, there is a remarkable number of outliers, indicating that even if there are some outlying cases, most of the observations stays pretty much stable in a short range. This group is a bit riskier than the first group.
+
+4- The last group represents MCP between 13:00 and 20:59. Box plots are obviously longer than any other observations from the remaining groups. Variation of MCP is getting higher and the variation is mostly in the upward direction. There is also rising number of extreme cases, two of which reached 982TL. Therefore, it's the group with the highest risk.
+
+
+
+### Distribution of Penalty Percentage for Underestimated Consumption
+
+  Underestimated energy requirement would result in maximum of Market Clearing Price and System Marginal Price times Penalty(1.03). It's called Negative Imbalance Price. Therefore, underestimating may have a huge cost for a consumer. In the following analysis, we examined how much a consumer would pay in addition to MCP in case of an underestimated energy consumption.
+
+
+
+```{r NIB analysis}
+df_pen <- df_v2 %>%
+  mutate(pen_for_underest = (Neg_Imb_Price-MCP)*100/MCP)
+
+ggplot(df_pen, aes(x = hour, y = pen_for_underest)) + 
+  geom_boxplot() + 
+  labs(x = "Hour",
+       y = "% of Penalty for Underestimation in terms of MCP",
+       title = "Distribution of Penalty Percentage for Underestimated Consumption in September 2020") + 
+  stat_summary(fun.y =mean, geom = "point", color="red")
+```
+
+
+  The graph above reveals that on average, a consumer with underestimated energy consumption make additional payment of ~%5 of Market Clearing Price at 7:00 whereas the additional payment is ~%15 of MCP at 11:00. It highlights the fact that misestimation would cost more at 11:00 than at 7:00. 
+  
+  Between 09:00-23:59, the average percentage of penalty for underestimation and the standard deviation for the penalty is higher than the rest of the day. There is even a case where an underestimation was resulted in an additional payment of ~%50 MCP, %150 MCP in total. Therefore, it is better to avoid over consumption of energy within this period.
+
+
+
+## Conclusion
+
+
+  In the first analysis, we observed that between 21:00 and 07:59, average MCP, variation of MCP and the occurrence of extreme cases are lower than the rest of the day. Thus, energy consumption within this time slot would be more predictable and it would cost less than the remaining period.
+
+  While the first analysis was aimed at navigating the time plots for the cheapest energy consumption, the second analysis was aimed at navigating the time plots for bidding more conservative. The analysis emphasized that in order to avoid any huge price differences, it is better to be more aggressive in bidding for an additional hour for safety between 09:00 and 23:59. 
+
+  All in all, it should be taken into consideration that the analysis is conducted based on the data for only September 2020. Therefore, our analysis may ignore any seasonality effect or the analysis may be under the influence of CoVID-19.
+
+
+
+## Reference
+
+
+EPIAS Market & Financial Settlement Center. MCP SMP and Imbalance Price Listing. Retrieved from: https://rapor.epias.com.tr/rapor/xhtml/ptfSmfListeleme.xhtml
