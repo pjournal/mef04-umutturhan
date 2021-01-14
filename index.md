@@ -11,3 +11,7 @@
 ## Turkish Energy Market Prices for September 2020
 
 [Report is available](Energy-Market-Prices.html)
+
+## Diamonds Price Estimation
+
+[Diamonds](diamonds.html)
