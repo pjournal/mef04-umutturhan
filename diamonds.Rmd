@@ -1,0 +1,229 @@
+---
+title: "Diamonds Price Estimation"
+author: "Umut Turhan"
+output: 
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_float:
+      smooth_scroll: true
+    toc_depth: 3
+date: "`r format(Sys.time(), '%d.%m.%Y')`"
+---
+
+## Introduction
+
+### Objective
+
+Objective of the analysis to develop model to estimate diamond prices.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(dplyr)
+```
+
+### Dataset (Diamonds)
+
+During the analysis, diamonds data set from ggplot2 package is used. And here you can find the overview of the data:  
+  
+- Cut, color and clarity are stored as categorical variables. 
+
+```{r data1}
+str(diamonds)
+```
+  
+- x, y and z represent the dimensions of the diamonds. There are some observation where dimensions are 0.00. These observations will be removed from data set.  
+```{r data2}
+summary(diamonds)
+diamonds <- filter(diamonds, x>0.00, y>0.00, z>0.00)
+```
+
+- Now, observations which have any dimensions as 0.00 are removed.
+```{r data3}
+summary(diamonds)
+```
+  
+- There is no missing values neither in train nor in test data set.
+```{r data4}
+cat("Total number of missing values in diamonds data set:", sum(is.na(diamonds)))
+```
+
+
+## Analysis
+
+### Exploratory Data Analysis
+
+Let's check whether we can observe any pattern from the visulation for independent variables. The first variable is "x" providing length in mm of diamonds. It seems there is an exponential relationship between price and x.
+```{r}
+ggplot(diamonds, aes(x, price)) +
+  geom_point(alpha=0.5) + 
+  geom_smooth(method="lm") +
+  labs(x="X",
+       y="Price",
+       title="Price vs X")
+```
+
+Let's take the logarithm of price to check whether there is a linear relationship. 
+```{r}
+ggplot(diamonds, aes(x, log(price))) +
+  geom_point(alpha=0.5) +
+  geom_smooth(method="lm") +
+  labs(x="X",
+       y="log(Price)",
+       title="log(Price) vs X")
+```
+It's the same for both "y" (width in mm) and "z" (depth in mm), too. So, let's quickly take the logarithm and re-visualize the graphs.
+
+
+```{r}
+ggplot(diamonds, aes(y, price)) +
+  geom_point(alpha=0.5) +
+  geom_smooth(method="lm") +
+  labs(x="Y",
+       y="Price",
+       title="Price vs Y")
+```
+
+```{r}
+ggplot(diamonds, aes(y, log(price))) +
+  geom_point(alpha=0.5) +
+  geom_smooth(method="lm") +
+  labs(x="Y",
+       y="log(Price)",
+       title="log(Price) vs Y")
+```
+
+```{r}
+ggplot(diamonds, aes(z, price)) +
+  geom_point(alpha=0.5) +
+  geom_smooth(method="lm") +
+  labs(x="Z",
+       y="Price",
+       title="Price vs Z")
+```
+```{r}
+ggplot(diamonds, aes(z, log(price))) +
+  geom_point(alpha=0.5) +
+  geom_smooth(method="lm") +
+  labs(x="Z",
+       y="log(Price)",
+       title="log(Price) vs Z")
+```
+So, it's better to convert price to log(price) for the sake of analysis.
+```{r}
+ggplot(diamonds, aes(carat, price)) +
+  geom_point(alpha=0.5) +
+  geom_smooth(method="lm")
+  labs(x="Carat",
+       y="Price",
+       title="Price vs Carat")
+```
+
+```{r}
+ggplot(diamonds, aes(carat, log(price))) +
+  geom_point(alpha=0.5) +
+  geom_smooth(method="lm") +
+  labs(x="Carat",
+       y="log(Price)",
+       title="log(Price) vs Carat")
+```
+```{r}
+ggplot(diamonds, aes(log(carat), log(price))) +
+  geom_point(alpha=0.5) +
+  geom_smooth(method="lm") +
+  labs(x="log(Carat)",
+       y="log(Price)",
+       title="log(Price) vs log(Carat)")
+```
+
+```{r}
+options(scipen=999)
+```
+
+Let's check the price distribution by color, cut and clarity:
+```{r}
+color_diamonds <- diamonds %>%
+  group_by(color) %>%
+  summarize(avg_col=mean(price))
+
+ggplot(color_diamonds, aes(color, avg_col)) + 
+  geom_col() +
+  labs(x="Color",
+       y="Price",
+       title="Color Distribution by Price")
+
+cut_diamonds <- diamonds %>%
+  group_by(cut) %>%
+  summarize(avg_cut=mean(price))
+
+ggplot(cut_diamonds, aes(cut, avg_cut)) + 
+  geom_col() +
+  labs(x="Cut",
+       y="Price",
+       title="Cut Distribution by Price")
+
+clar_diamonds <- diamonds %>%
+  group_by(clarity) %>%
+  summarize(avg_clar=mean(price))
+
+ggplot(clar_diamonds, aes(clarity, avg_clar)) + 
+  geom_col() +
+  labs(x="Clarity",
+       y="Price",
+       title="Clarity Distribution by Price")
+```
+
+Here, you can find the combined version of the distribution above:
+```{r}
+ggplot(diamonds, aes(color, price, color=cut)) +
+  geom_jitter(alpha=0.5) +
+  facet_wrap(~clarity, ncol=2) +
+  labs(x="Color",
+       y="Price",
+       color="Cut",
+       title="Price vs Color, Cut and Clarity") +
+  scale_color_brewer(palette="Dark2")
+```
+From the plot below, we can also infer that x, y, z and price have a positive correlation as all increases simultaneously.
+```{r}
+ggplot(diamonds, aes(x, y, color=z, size=price)) + geom_point(alpha=0.3)
+```
+
+For the sake of supervised learning, train and test data are split as shown below:
+```{r diamonds}
+set.seed(503)
+diamonds_test <- diamonds %>% 
+  mutate(diamond_id = row_number()) %>%
+  group_by(cut, color, clarity) %>% 
+  sample_frac(0.2) %>% 
+  ungroup()
+
+diamonds_train <- anti_join(diamonds %>%
+                              mutate(diamond_id = row_number()),diamonds_test, by = "diamond_id")
+```
+
+### Classification and Regression Trees (CART)
+  
+CART model is constructed as follows:
+```{r model}
+diamonds_model <- rpart(price ~ ., data=diamonds_train[-11])
+fancyRpartPlot(diamonds_model, type =5, digits = 3)
+diamonds_in_sample <- predict(diamonds_model)
+```
+### Linear Regression
+
+A linear model with the existing values has R squared value of 92% whereas it is 98% when we convert price and carat to log(price) and log(carat).
+```{r test}
+lm_diamonds1 <- lm(price~carat + cut + clarity + color + x + y + z, data=diamonds_train)
+summary(lm_diamonds1)
+lm_diamonds2 <- lm(I(log(price))~I(log(carat)) + cut + clarity + color + x + y + z, data=diamonds_train)
+summary(lm_diamonds2)
+```
+
